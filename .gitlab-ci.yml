@@ -6,7 +6,7 @@ ci-image:default:
   stage: ci-image
   # when: manual
   only: ["master", "pawel/ci_cd"]
-  tags: ["runner:docker", "size:large"]
+  tags: ["runner:main", "size:large"]
   image: $BUILDENV_REGISTRY/docker:18.03.1
   script:
     - docker ps
