@@ -8,4 +8,4 @@ ci-image:default:
   only: ["master", "pawel/ci_cd"]
   tags: ["runner:main", "size:large"]
   script:
-    - curl https://github.com/bazelbuild/bazel/releases/download/2.1.0/bazel-2.1.0-installer-linux-x86_64.sh | bash -
+    - wget -C "https://github.com/bazelbuild/bazel/releases/download/2.1.0/bazel-2.1.0-installer-linux-x86_64.sh"
