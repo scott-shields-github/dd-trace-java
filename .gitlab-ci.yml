@@ -5,7 +5,7 @@ stages:
 ci-image:default:
   stage: ci-image
   # when: manual
-  only: ["master"]
+  only: ["master", "pawel/ci_cd"]
   tags: ["runner:main", "size:large"]
   script:
     - docker ps -a
