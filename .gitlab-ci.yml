@@ -6,6 +6,9 @@ ci-image:default:
   stage: ci-image
   # when: manual
   only: ["master", "pawel/ci_cd"]
-  tags: ["runner:main", "size:large"]
+  tags: ["runner:docker", "size:large"]
+  image: $BUILDENV_REGISTRY/docker:18.03.1
   script:
-    - wget -C "https://github.com/bazelbuild/bazel/releases/download/2.1.0/bazel-2.1.0-installer-linux-x86_64.sh"
+    - docker ps
+    # - image: $BUILDENV_REGISTRY/docker:18.03.1
+    # - wget -C "https://github.com/bazelbuild/bazel/releases/download/2.1.0/bazel-2.1.0-installer-linux-x86_64.sh"
