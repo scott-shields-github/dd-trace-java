@@ -1,0 +1,11 @@
+stages:
+  - ci-image
+  - deploy
+
+ci-image:default:
+  stage: ci-image
+  when: manual
+  only: ["master"]
+  tags: ["runner:main", "size:large"]
+  script:
+    - docker ps -a
