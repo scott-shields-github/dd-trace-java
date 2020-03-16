@@ -1,16 +1,16 @@
 package springdata
 
-import com.anotherchrisberry.spock.extensions.retry.RetryOnFailure
 import datadog.trace.agent.test.AgentTestRunner
 import datadog.trace.api.DDSpanTypes
 import datadog.trace.bootstrap.instrumentation.api.Tags
 import org.springframework.context.ApplicationContext
 import org.springframework.context.annotation.AnnotationConfigApplicationContext
+import spock.lang.Retry
 import spock.lang.Shared
 
 import static datadog.trace.agent.test.utils.TraceUtils.runUnderTrace
 
-@RetryOnFailure(times = 3, delaySeconds = 1)
+@Retry(count = 3, delay = 1000)
 class Elasticsearch2SpringRepositoryTest extends AgentTestRunner {
   @Shared
   ApplicationContext applicationContext = new AnnotationConfigApplicationContext(Config)
