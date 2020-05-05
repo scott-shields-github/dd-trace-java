@@ -55,6 +55,8 @@ import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
+import okhttp3.mockwebserver.SocketPolicy;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -136,6 +138,21 @@ public class RecordingUploaderTest {
     } catch (final IOException e) {
       // Looks like this happens for some unclear reason, but should not affect tests
     }
+  }
+
+  @Test
+  public void testRequestRetryOnTimeout() throws IOException, InterruptedException {
+    server.enqueue(new MockResponse().setResponseCode(408)); // HTTP status 408 : Request timeout
+    server.enqueue(new MockResponse().setResponseCode(200));
+
+    uploader.upload(RECORDING_TYPE, mockRecordingData(RECORDING_RESOURCE));
+
+    final RecordedRequest recordedRequest = server.takeRequest(5, TimeUnit.SECONDS);
+    final RecordedRequest retriedRequest = server.takeRequest(5, TimeUnit.SECONDS);
+
+    assertEquals(recordedRequest.getMethod(), retriedRequest.getMethod());
+    assertEquals(recordedRequest.getPath(), retriedRequest.getPath());
+    assertEquals(recordedRequest.getBody(), retriedRequest.getBody());
   }
 
   @ParameterizedTest

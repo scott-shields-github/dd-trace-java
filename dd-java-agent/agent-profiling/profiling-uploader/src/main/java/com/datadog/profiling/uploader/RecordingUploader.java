@@ -23,6 +23,7 @@ import com.datadog.profiling.util.ProfilingThreadFactory;
 import datadog.trace.api.Config;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.time.Duration;
@@ -36,6 +37,8 @@ import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.Call;
 import okhttp3.Callback;
@@ -87,30 +90,10 @@ public final class RecordingUploader {
       Headers.of(
           "Content-Disposition", "form-data; name=\"" + DATA_PARAM + "\"; filename=\"recording\"");
 
-  private static final Callback RESPONSE_CALLBACK =
-      new Callback() {
-        @Override
-        public void onFailure(final Call call, final IOException e) {
-          log.error("Failed to upload recording", e);
-        }
-
-        @Override
-        public void onResponse(final Call call, final Response response) {
-          if (response.isSuccessful()) {
-            log.debug("Upload done");
-          } else {
-            log.error(
-                "Failed to upload recording: unexpected response code {} {}",
-                response.message(),
-                response.code());
-          }
-          response.close();
-        }
-      };
-
   static final int SEED_EXPECTED_REQUEST_SIZE = 2 * 1024 * 1024; // 2MB;
   static final int REQUEST_SIZE_HISTORY_SIZE = 10;
   static final double REQUEST_SIZE_COEFFICIENT = 1.2;
+  static final int MAX_RETRIES = 1;
 
   private final ExecutorService okHttpExecutorService;
   private final OkHttpClient client;
@@ -311,7 +294,7 @@ public final class RecordingUploader {
             .post(requestBody)
             .build();
 
-    client.newCall(request).enqueue(RESPONSE_CALLBACK);
+    client.newCall(request).enqueue(new RetryCallback());
   }
 
   private int getExpectedRequestSize() {
@@ -346,5 +329,53 @@ public final class RecordingUploader {
         .filter(e -> e.getValue() != null && !e.getValue().isEmpty())
         .map(e -> e.getKey() + ":" + e.getValue())
         .collect(Collectors.toList());
+  }
+
+  private class RetryCallback implements Callback {
+    private int nbRetries = 0;
+
+    @SneakyThrows(InterruptedException.class)
+    private boolean tryRetryRequest(Call call) {
+      if (nbRetries++ < MAX_RETRIES) {
+        // Retry after 1s, 2s, 4s, 8s
+        long backoffSec = 1 << nbRetries;
+        if (backoffSec > 8)
+          backoffSec = 8;
+
+        Thread.sleep(backoffSec * 1_000L);
+        client.newCall(call.request()).enqueue(this);
+        return true;
+      }
+      return false;
+    }
+
+    @Override
+    public void onFailure(final Call call, final IOException e) {
+      if (tryRetryRequest(call)) {
+        log.error("Failed to upload recording, retry upload" + nbRetries + " time(s)", e);
+      } else {
+        log.error("Failed to upload recording", e);
+      }
+    }
+
+    @Override
+    public void onResponse(final Call call, final Response response) {
+      if (response.isSuccessful()) {
+        log.debug("Upload done");
+      } else if (response.code() == 408 || response.code() == 500) {
+        // HTTP status 408: Request timeout
+        if (tryRetryRequest(call)) {
+          log.error("Failed to upload recording (HTTP status:" + response.code() + "), retry upload" + nbRetries + " time(s)");
+        } else {
+          log.error("Failed to upload recording (HTTP status:" + response.code() + ")");
+        }
+      } else {
+        log.error(
+          "Failed to upload recording: unexpected response code {} {}",
+          response.message(),
+          response.code());
+      }
+      response.close();
+    }
   }
 }
