@@ -225,7 +225,7 @@ class OpenTracingAPITest extends DDSpecification {
     continuation != null
 
     when:
-    continuation.close()
+    continuation.cancel()
     scope.close()
 
     then:
@@ -287,22 +287,24 @@ class OpenTracingAPITest extends DDSpecification {
     def textMap = new TextMapAdapter(new HashMap<String, String>())
 
     when:
-    Scope scope = tracer.buildSpan("clientOperation")
+    Span testSpan = tracer.buildSpan("clientOperation")
       .withServiceName("someClientService")
-      .startActive(true)
+      .start()
+    Scope scope = tracer.activateSpan(testSpan)
 
-    Span testSpan = scope.span()
     tracer.inject(testSpan.context(), Format.Builtin.HTTP_HEADERS, textMap)
 
 
     SpanContext extractedContext = tracer.extract(Format.Builtin.HTTP_HEADERS, textMap)
-    Scope serverScope = tracer.buildSpan("serverOperation")
+    Span serverSpan = tracer.buildSpan("serverOperation")
       .withServiceName("someService")
       .asChildOf(extractedContext)
-      .startActive(true)
-    serverScope.close()
+      .start()
+    tracer.activateSpan(serverSpan).close()
+    serverSpan.finish()
 
     scope.close()
+    testSpan.finish()
 
     then:
     2 * traceInterceptor.onTraceComplete({ it.size() == 1 }) >> { args -> args[0] }
@@ -331,7 +333,6 @@ class OpenTracingAPITest extends DDSpecification {
           }
         }
       }
-
     }
   }
 }
