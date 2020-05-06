@@ -23,7 +23,6 @@ import com.datadog.profiling.util.ProfilingThreadFactory;
 import datadog.trace.api.Config;
 import java.io.IOException;
 import java.io.InputStream;
-import java.io.UnsupportedEncodingException;
 import java.net.InetSocketAddress;
 import java.net.Proxy;
 import java.time.Duration;
@@ -36,6 +35,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.SynchronousQueue;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import lombok.SneakyThrows;
@@ -93,7 +93,7 @@ public final class RecordingUploader {
   static final int SEED_EXPECTED_REQUEST_SIZE = 2 * 1024 * 1024; // 2MB;
   static final int REQUEST_SIZE_HISTORY_SIZE = 10;
   static final double REQUEST_SIZE_COEFFICIENT = 1.2;
-  static final int MAX_RETRIES = 1;
+  static final int MAX_RETRIES = 2;
 
   private final ExecutorService okHttpExecutorService;
   private final OkHttpClient client;
@@ -102,6 +102,8 @@ public final class RecordingUploader {
   private final List<String> tags;
   private final Compression compression;
   private final Deque<Integer> requestSizeHistory;
+  private final AtomicInteger currentInflightBytes;
+  private final Integer maxInflightBytes;
 
   public RecordingUploader(final Config config) {
     url = config.getFinalProfilingUrl();
@@ -181,6 +183,9 @@ public final class RecordingUploader {
 
     requestSizeHistory = new ArrayDeque<>(REQUEST_SIZE_HISTORY_SIZE);
     requestSizeHistory.add(SEED_EXPECTED_REQUEST_SIZE);
+
+    currentInflightBytes = new AtomicInteger(0);
+    maxInflightBytes = config.getProfilingMaxInflightBytes();
   }
 
   public void upload(final RecordingType type, final RecordingData data) {
@@ -267,7 +272,9 @@ public final class RecordingUploader {
         expectedRequestSize);
 
     // The body data is stored in byte array so we naturally get size limit that will fit into int
-    updateUploadSizesHistory((int) body.contentLength());
+    int bodyLength = (int) body.contentLength();
+    updateUploadSizesHistory(bodyLength);
+    currentInflightBytes.addAndGet(bodyLength);
 
     final MultipartBody.Builder bodyBuilder =
         new MultipartBody.Builder()
@@ -320,7 +327,8 @@ public final class RecordingUploader {
   }
 
   private boolean canEnqueueMoreRequests() {
-    return client.dispatcher().queuedCallsCount() < MAX_ENQUEUED_REQUESTS;
+    return client.dispatcher().queuedCallsCount() < MAX_ENQUEUED_REQUESTS
+      && currentInflightBytes.get() < maxInflightBytes;
   }
 
   private List<String> tagsToList(final Map<String, String> tags) {
@@ -334,18 +342,24 @@ public final class RecordingUploader {
   private class RetryCallback implements Callback {
     private int nbRetries = 0;
 
-    @SneakyThrows(InterruptedException.class)
+    @SneakyThrows(IOException.class)
     private boolean tryRetryRequest(Call call) {
-      if (nbRetries++ < MAX_RETRIES) {
+      // Don't retry if the queue is full to accept new recordings
+      if (canEnqueueMoreRequests() && nbRetries++ < MAX_RETRIES) {
         // Retry after 1s, 2s, 4s, 8s
         long backoffSec = 1 << nbRetries;
         if (backoffSec > 8)
           backoffSec = 8;
 
-        Thread.sleep(backoffSec * 1_000L);
+        try {
+          Thread.sleep(backoffSec * 1_000L);
+        } catch (InterruptedException e) {
+          // No special action here, we still have to send the request anyway
+        }
         client.newCall(call.request()).enqueue(this);
         return true;
       }
+      currentInflightBytes.addAndGet((int) (-1 * call.request().body().contentLength()));
       return false;
     }
 
@@ -366,9 +380,8 @@ public final class RecordingUploader {
         // HTTP status 408: Request timeout
         if (tryRetryRequest(call)) {
           log.error("Failed to upload recording (HTTP status:" + response.code() + "), retry upload" + nbRetries + " time(s)");
-        } else {
-          log.error("Failed to upload recording (HTTP status:" + response.code() + ")");
         }
+        log.error("Failed to upload recording (HTTP status:" + response.code() + ")");
       } else {
         log.error(
           "Failed to upload recording: unexpected response code {} {}",

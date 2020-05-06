@@ -55,8 +55,8 @@ import okhttp3.HttpUrl;
 import okhttp3.mockwebserver.MockResponse;
 import okhttp3.mockwebserver.MockWebServer;
 import okhttp3.mockwebserver.RecordedRequest;
-import okhttp3.mockwebserver.SocketPolicy;
 
+import org.apache.commons.io.IOUtils;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -107,8 +107,10 @@ public class RecordingUploaderTest {
   // TODO: Add a test to verify overall request timeout rather than IO timeout
   private final Duration REQUEST_TIMEOUT = Duration.ofSeconds(10);
   private final Duration REQUEST_IO_OPERATION_TIMEOUT = Duration.ofSeconds(5);
+  private final int MAX_INFLIGHT_BYTES = 60 * 1024 * 1024; // 60 MB
 
   private final Duration FOREVER_REQUEST_TIMEOUT = Duration.ofSeconds(1000);
+  private final int FOREVER_INFLIGHT_BYTES = 1024 * 1024 * 1024; // 1GB
 
   @Mock private Config config;
 
@@ -126,6 +128,7 @@ public class RecordingUploaderTest {
     when(config.getApiKey()).thenReturn(API_KEY_VALUE);
     when(config.getMergedProfilingTags()).thenReturn(TAGS);
     when(config.getProfilingUploadTimeout()).thenReturn((int) REQUEST_TIMEOUT.getSeconds());
+    when(config.getProfilingMaxInflightBytes()).thenReturn( MAX_INFLIGHT_BYTES);
 
     uploader = new RecordingUploader(config);
   }
@@ -150,9 +153,8 @@ public class RecordingUploaderTest {
     final RecordedRequest recordedRequest = server.takeRequest(5, TimeUnit.SECONDS);
     final RecordedRequest retriedRequest = server.takeRequest(5, TimeUnit.SECONDS);
 
-    assertEquals(recordedRequest.getMethod(), retriedRequest.getMethod());
-    assertEquals(recordedRequest.getPath(), retriedRequest.getPath());
-    assertEquals(recordedRequest.getBody(), retriedRequest.getBody());
+    assertNotNull(recordedRequest);
+    assertNotNull(retriedRequest);
   }
 
   @ParameterizedTest
@@ -420,6 +422,37 @@ public class RecordingUploaderTest {
       verify(recording.getStream()).close();
       verify(recording).release();
     }
+  }
+
+  @Test
+  public void testTooMuchInflightData() throws IOException, InterruptedException {
+    // Disable compression to compute recording size
+    when(config.getProfilingUploadCompression()).thenReturn("off");
+    RecordingData recording = mockRecordingData(RECORDING_RESOURCE);
+    int recordingSize = IOUtils.toByteArray(recording.getStream()).length;
+    when(config.getProfilingMaxInflightBytes()).thenReturn(recordingSize * 2 - 1);// Up to 2 recordings
+
+    uploader = new RecordingUploader(config);
+
+    MockResponse response =
+      new MockResponse()
+        .setHeadersDelay(REQUEST_IO_OPERATION_TIMEOUT.toMillis(), TimeUnit.MILLISECONDS)
+        .setResponseCode(200);
+    server.enqueue(response.clone());
+    server.enqueue(response.clone());
+    server.enqueue(response.clone());
+
+    uploader.upload(RECORDING_TYPE, mockRecordingData(RECORDING_RESOURCE));
+    uploader.upload(RECORDING_TYPE, mockRecordingData(RECORDING_RESOURCE));
+    uploader.upload(RECORDING_TYPE, mockRecordingData(RECORDING_RESOURCE)); // Dropped request
+
+    final RecordedRequest firstRequest = server.takeRequest(5, TimeUnit.SECONDS);
+    final RecordedRequest secondRequest = server.takeRequest(5, TimeUnit.SECONDS);
+    final RecordedRequest droppedRequest = server.takeRequest(5, TimeUnit.SECONDS); // Timeout since the 3rd request is dropped
+
+    assertNotNull(firstRequest);
+    assertNotNull(secondRequest);
+    assertNull(droppedRequest);
   }
 
   @Test

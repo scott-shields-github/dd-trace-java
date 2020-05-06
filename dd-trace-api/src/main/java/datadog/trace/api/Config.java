@@ -137,6 +137,7 @@ public class Config {
   public static final String PROFILING_TEMPLATE_OVERRIDE_FILE =
       "profiling.jfr-template-override-file";
   public static final String PROFILING_UPLOAD_TIMEOUT = "profiling.upload.timeout";
+  public static final String PROFILING_MAX_INFLIGHT_BYTES = "profiling.upload.max.inflight.bytes";
   public static final String PROFILING_UPLOAD_COMPRESSION = "profiling.upload.compression";
   public static final String PROFILING_PROXY_HOST = "profiling.proxy.host";
   public static final String PROFILING_PROXY_PORT = "profiling.proxy.port";
@@ -199,6 +200,7 @@ public class Config {
   public static final boolean DEFAULT_PROFILING_START_FORCE_FIRST = false;
   public static final int DEFAULT_PROFILING_UPLOAD_PERIOD = 60; // 1 min
   public static final int DEFAULT_PROFILING_UPLOAD_TIMEOUT = 30; // seconds
+  public static final int DEFAULT_PROFILING_MAX_INFLIGHT_BYTES = 60 * 1024 * 1024; // 60 MB
   public static final String DEFAULT_PROFILING_UPLOAD_COMPRESSION = "on";
   public static final int DEFAULT_PROFILING_PROXY_PORT = 8080;
   public static final int DEFAULT_PROFILING_EXCEPTION_SAMPLE_LIMIT = 10_000;
@@ -215,6 +217,7 @@ public class Config {
   public static final boolean DEFAULT_TRACE_ANALYTICS_ENABLED = false;
   public static final float DEFAULT_ANALYTICS_SAMPLE_RATE = 1.0f;
   public static final double DEFAULT_TRACE_RATE_LIMIT = 100;
+
 
   public enum PropagationStyle {
     DATADOG,
@@ -321,6 +324,7 @@ public class Config {
   @Getter private final int profilingUploadPeriod;
   @Getter private final String profilingTemplateOverrideFile;
   @Getter private final int profilingUploadTimeout;
+  @Getter private final int profilingMaxInflightBytes;
   @Getter private final String profilingUploadCompression;
   @Getter private final String profilingProxyHost;
   @Getter private final int profilingProxyPort;
@@ -524,6 +528,9 @@ public class Config {
     profilingUploadTimeout =
         getIntegerSettingFromEnvironment(
             PROFILING_UPLOAD_TIMEOUT, DEFAULT_PROFILING_UPLOAD_TIMEOUT);
+    profilingMaxInflightBytes =
+        getIntegerSettingFromEnvironment(
+          PROFILING_MAX_INFLIGHT_BYTES, DEFAULT_PROFILING_MAX_INFLIGHT_BYTES);
     profilingUploadCompression =
         getSettingFromEnvironment(
             PROFILING_UPLOAD_COMPRESSION, DEFAULT_PROFILING_UPLOAD_COMPRESSION);
@@ -709,6 +716,9 @@ public class Config {
     profilingUploadTimeout =
         getPropertyIntegerValue(
             properties, PROFILING_UPLOAD_TIMEOUT, parent.profilingUploadTimeout);
+    profilingMaxInflightBytes =
+      getPropertyIntegerValue(
+        properties, PROFILING_MAX_INFLIGHT_BYTES, parent.profilingMaxInflightBytes);
     profilingUploadCompression =
         properties.getProperty(PROFILING_UPLOAD_COMPRESSION, parent.profilingUploadCompression);
     profilingProxyHost = properties.getProperty(PROFILING_PROXY_HOST, parent.profilingProxyHost);
