@@ -48,6 +48,7 @@ class CustomScopeManagerWrapper implements DDScopeManager {
     return new CustomScopeManagerScope(scope);
   }
 
+  @Deprecated
   @Override
   public TraceScope active() {
     return new CustomScopeManagerScope(delegate.active());

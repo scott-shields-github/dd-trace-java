@@ -10,6 +10,7 @@ import datadog.trace.common.writer.ddagent.DDAgentResponseListener;
 import datadog.trace.common.writer.ddagent.Monitor;
 import datadog.trace.common.writer.ddagent.TraceProcessingDisruptor;
 import datadog.trace.core.DDSpan;
+import datadog.trace.core.interceptor.TraceStatsCollector;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import lombok.extern.slf4j.Slf4j;
@@ -36,6 +37,7 @@ public class DDAgentWriter implements Writer {
   private final DDAgentApi api;
   private final TraceProcessingDisruptor traceProcessingDisruptor;
   private final BatchWritingDisruptor batchWritingDisruptor;
+  private final TraceStatsCollector statsCollector = new TraceStatsCollector();
 
   private final AtomicInteger traceCount = new AtomicInteger(0);
 
@@ -67,7 +69,7 @@ public class DDAgentWriter implements Writer {
     batchWritingDisruptor = new BatchWritingDisruptor(DISRUPTOR_BUFFER_SIZE, 1, api, monitor, this);
     traceProcessingDisruptor =
         new TraceProcessingDisruptor(
-            DISRUPTOR_BUFFER_SIZE, api, batchWritingDisruptor, monitor, this);
+            DISRUPTOR_BUFFER_SIZE, api, batchWritingDisruptor, statsCollector, monitor, this);
   }
 
   @lombok.Builder
@@ -90,7 +92,8 @@ public class DDAgentWriter implements Writer {
     batchWritingDisruptor =
         new BatchWritingDisruptor(traceBufferSize, flushFrequencySeconds, api, monitor, this);
     traceProcessingDisruptor =
-        new TraceProcessingDisruptor(traceBufferSize, api, batchWritingDisruptor, monitor, this);
+        new TraceProcessingDisruptor(
+            traceBufferSize, api, batchWritingDisruptor, statsCollector, monitor, this);
   }
 
   public void addResponseListener(final DDAgentResponseListener listener) {
@@ -146,6 +149,11 @@ public class DDAgentWriter implements Writer {
   @Override
   public void incrementTraceCount() {
     traceCount.incrementAndGet();
+  }
+
+  @Override
+  public TraceStatsCollector getTraceStatsCollector() {
+    return statsCollector;
   }
 
   public DDAgentApi getApi() {

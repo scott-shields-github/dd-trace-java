@@ -42,6 +42,8 @@ public class AgentTracer {
     return get().activeSpan();
   }
 
+  /** @deprecated Scopes should be tracked directly by the instrumentation. */
+  @Deprecated
   public static TraceScope activeScope() {
     return get().activeScope();
   }
@@ -86,6 +88,8 @@ public class AgentTracer {
 
     AgentSpan activeSpan();
 
+    /** @deprecated Scopes should be tracked directly by the instrumentation. */
+    @Deprecated
     TraceScope activeScope();
 
     AgentPropagation propagate();

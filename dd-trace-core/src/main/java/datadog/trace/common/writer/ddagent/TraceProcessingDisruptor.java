@@ -4,6 +4,7 @@ import com.lmax.disruptor.EventHandler;
 import datadog.common.exec.DaemonThreadFactory;
 import datadog.trace.common.writer.DDAgentWriter;
 import datadog.trace.core.DDSpan;
+import datadog.trace.core.interceptor.TraceStatsCollector;
 import datadog.trace.core.processor.TraceProcessor;
 import java.util.List;
 import lombok.extern.slf4j.Slf4j;
@@ -19,13 +20,16 @@ import lombok.extern.slf4j.Slf4j;
 public class TraceProcessingDisruptor extends AbstractDisruptor<List<DDSpan>> {
 
   public TraceProcessingDisruptor(
-      final int disruptorSize,
-      final DDAgentApi api,
-      final BatchWritingDisruptor batchWritingDisruptor,
-      final Monitor monitor,
-      final DDAgentWriter writer) {
+    final int disruptorSize,
+    final DDAgentApi api,
+    final BatchWritingDisruptor batchWritingDisruptor,
+    final TraceStatsCollector statsCollector,
+    final Monitor monitor,
+    final DDAgentWriter writer) {
     // TODO: add config to enable control over serialization overhead.
-    super(disruptorSize, new TraceSerializingHandler(api, batchWritingDisruptor, monitor, writer));
+    super(
+        disruptorSize,
+        new TraceSerializingHandler(api, batchWritingDisruptor, statsCollector, monitor, writer));
   }
 
   @Override
@@ -41,7 +45,7 @@ public class TraceProcessingDisruptor extends AbstractDisruptor<List<DDSpan>> {
   // This class is threadsafe if we want to enable more processors.
   public static class TraceSerializingHandler
       implements EventHandler<DisruptorEvent<List<DDSpan>>> {
-    private final TraceProcessor processor = new TraceProcessor();
+    private final TraceProcessor processor;
     private final DDAgentApi api;
     private final BatchWritingDisruptor batchWritingDisruptor;
     private final Monitor monitor;
@@ -50,12 +54,18 @@ public class TraceProcessingDisruptor extends AbstractDisruptor<List<DDSpan>> {
     public TraceSerializingHandler(
         final DDAgentApi api,
         final BatchWritingDisruptor batchWritingDisruptor,
+        final TraceStatsCollector statsCollector,
         final Monitor monitor,
         final DDAgentWriter writer) {
       this.api = api;
       this.batchWritingDisruptor = batchWritingDisruptor;
       this.monitor = monitor;
       this.writer = writer;
+      processor = new TraceProcessor(statsCollector);
+    }
+
+    public TraceStatsCollector getTraceStatsCollector() {
+      return processor.getTraceStatsCollector();
     }
 
     @Override

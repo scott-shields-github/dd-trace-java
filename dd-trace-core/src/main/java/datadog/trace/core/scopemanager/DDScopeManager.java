@@ -14,6 +14,8 @@ public interface DDScopeManager {
   @Deprecated
   AgentScope activate(AgentSpan span, boolean finishOnClose);
 
+  /** @deprecated Scopes should be tracked directly by the instrumentation. */
+  @Deprecated
   TraceScope active();
 
   AgentSpan activeSpan();
