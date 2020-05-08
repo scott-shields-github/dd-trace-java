@@ -321,7 +321,7 @@ public class DDSpanContext implements AgentSpan.Context {
    * @param tag the tag-name
    * @param value the value of the tag. tags with null values are ignored.
    */
-  public synchronized void setTag(final String tag, final Object value) {
+  public void setTag(final String tag, final Object value) {
     if (value == null || (value instanceof String && ((String) value).isEmpty())) {
       tags.remove(tag);
       return;
@@ -349,7 +349,7 @@ public class DDSpanContext implements AgentSpan.Context {
     }
   }
 
-  public synchronized Map<String, Object> getTags() {
+  public Map<String, Object> getTags() {
     return Collections.unmodifiableMap(tags);
   }
 
